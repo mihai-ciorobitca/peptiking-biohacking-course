@@ -69,6 +69,22 @@ Rerun the same command at any time to resume. Never add `-Force`; the new downlo
 
 The Move mode refuses to run while a legacy downloader is active, preventing an old process from redownloading moved files.
 
+## Step 3: download five videos in parallel
+
+Keep the authenticated downloader Chrome from step 1 open, then run the parallel downloader. It copies the active LearningSuite session into five isolated Chrome workers, so no additional logins are required.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\3-download-videos-parallel.ps1" "$env:USERPROFILE\Documents\Biohacking\Biohacking Praxis" -MaxParallel 5 -TemplateDebugPort 9321 -DebugPortBase 9420 -Automatic
+```
+
+Use `-StartAt` and `-EndAt` to download an inclusive lesson range. For example, this selects lessons 101 through 105:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\3-download-videos-parallel.ps1" "$env:USERPROFILE\Documents\Biohacking\Biohacking Praxis" -StartAt 101 -EndAt 105 -MaxParallel 5 -TemplateDebugPort 9321 -DebugPortBase 9420 -Automatic
+```
+
+The script skips existing files, keeps at most five downloads active, reuses its worker profiles on later runs, and records results in `parallel-download-status.csv` plus per-lesson logs in `parallel-download-logs`.
+
 ## Course URLs
 
 - Mini-Masterclass Peptide: `https://biohacking.learningsuite.io/student/course/mini-masterclass-peptide/TlbR5YFm`
@@ -80,5 +96,6 @@ The Move mode refuses to run while a legacy downloader is active, preventing an 
 
 - `scripts\1-create-course-structure.ps1`
 - `scripts\2-download-missing-videos.ps1`
+- `scripts\3-download-videos-parallel.ps1`
 
 The remaining scripts provide the underlying single-video download and the older downloader workflow.
