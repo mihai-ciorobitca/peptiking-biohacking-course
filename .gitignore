@@ -1,0 +1,6 @@
+*.mp4
+*.ts
+*.crdownload
+parallel-logs/
+ChromeProfile/
+ParallelProfiles/
