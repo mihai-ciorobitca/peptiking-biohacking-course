@@ -373,14 +373,15 @@ try {
         $moduleDeadline = (Get-Date).AddSeconds(60)
         do {
             $moduleTitles = @(Invoke-CdpExpression -Socket $socket -Expression @'
-(() => Array.from(document.querySelectorAll('h4'))
-  .filter(h => {
-    const text = (h.innerText || '').trim();
-    const card = h.closest('.MuiCard-root') || h.parentElement;
-    return text && !/^\d+%$/.test(text) && card && getComputedStyle(h).cursor === 'pointer' && /Lektion(?:en)?/i.test(card.innerText || '');
+(() => Array.from(document.querySelectorAll('.MuiCard-root'))
+  .filter(card => {
+    const text = card.innerText || '';
+    return /\d+\s+(Lektion(?:en)?|Lesson(?:s)?)/i.test(text) &&
+      !/(Erscheint bald|Coming soon)/i.test(text) &&
+      getComputedStyle(card).cursor === 'pointer';
   })
-  .map(h => (h.innerText || '').trim())
-  .filter((title, index, titles) => titles.indexOf(title) === index))()
+  .map(card => (card.innerText || '').split(/\r?\n/).map(line => line.trim()).find(Boolean) || '')
+  .filter((title, index, titles) => title && titles.indexOf(title) === index))()
 '@)
             if ($moduleTitles.Count -eq 1 -and $moduleTitles[0] -is [array]) {
                 $moduleTitles = @($moduleTitles[0])
@@ -399,9 +400,15 @@ try {
                 $clickResult = Invoke-CdpExpression -Socket $socket -Expression @"
 (() => {
   const wanted = $titleJson;
-  const heading = Array.from(document.querySelectorAll('h4')).find(h => (h.innerText || '').trim() === wanted);
-  if (!heading) return false;
-  heading.click();
+  const card = Array.from(document.querySelectorAll('.MuiCard-root')).find(candidate => {
+    const title = (candidate.innerText || '').split(/\r?\n/).map(line => line.trim()).find(Boolean) || '';
+    return title === wanted &&
+      /\d+\s+(Lektion(?:en)?|Lesson(?:s)?)/i.test(candidate.innerText || '') &&
+      !/(Erscheint bald|Coming soon)/i.test(candidate.innerText || '');
+  });
+  if (!card) return false;
+  card.scrollIntoView({ block: 'center' });
+  card.click();
   return true;
 })()
 "@
