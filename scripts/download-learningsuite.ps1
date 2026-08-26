@@ -316,11 +316,24 @@ try {
   const host = document.querySelector('hls-video');
   const video = host?.shadowRoot?.querySelector('video');
   if (!host || !video) return { ready: false, page: location.href };
+  const level = Array.from(host.api?.levels || [])
+    .filter(candidate => candidate?.details?.fragments?.length)
+    .sort((left, right) => (right.height || 0) - (left.height || 0))[0];
+  const segments = Array.from(level?.details?.fragments || [])
+    .map(fragment => {
+      const url = fragment.url || '';
+      const name = url ? new URL(url).pathname.split('/').pop() : '';
+      return { name, url };
+    })
+    .filter(segment => /^video\d+\.ts$/i.test(segment.name) && segment.url);
+  const mediaDuration = Number.isFinite(video.duration) ? video.duration : 0;
+  const manifestDuration = Number.isFinite(level?.details?.totalduration) ? level.details.totalduration : 0;
   return {
-    ready: true,
+    ready: mediaDuration > 0 || segments.length > 0,
     page: location.href,
     source: host.getAttribute('src'),
-    duration: Number.isFinite(video.duration) ? video.duration : 0
+    duration: mediaDuration || manifestDuration,
+    segments
   };
 })()
 '@
@@ -339,12 +352,29 @@ try {
         throw 'The active LearningSuite lesson does not have a ready HLS video player.'
     }
 
+    $manifestSegments = @($player.segments)
+    if ($manifestSegments.Count -eq 1 -and $manifestSegments[0] -is [array]) {
+        $manifestSegments = @($manifestSegments[0])
+    }
+    foreach ($manifestSegment in $manifestSegments) {
+        $name = [string]$manifestSegment.name
+        $url = [string]$manifestSegment.url
+        if ($name -match '^video\d+\.ts$' -and $url) {
+            $script:SegmentUrls[$name] = $url
+        }
+    }
+
     $videoId = 'video'
     if ([string]$player.source -match '/course/(?<id>[0-9a-f-]{36})/') {
         $videoId = $Matches.id.Substring(0, 8)
     }
 
-    Write-Host "Capturing signed stream segments for $([Math]::Round([double]$player.duration, 1)) seconds of video..." -ForegroundColor Cyan
+    if ($script:SegmentUrls.Count -gt 0) {
+        Write-Host "Found $($script:SegmentUrls.Count) signed stream segments in the player manifest." -ForegroundColor Cyan
+    }
+    else {
+        Write-Host "Capturing signed stream segments for $([Math]::Round([double]$player.duration, 1)) seconds of video..." -ForegroundColor Cyan
+    }
 
     $duration = [double]$player.duration
     $seekPoints = [Collections.Generic.List[double]]::new()
@@ -357,9 +387,10 @@ try {
         $seekPoints.Add([Math]::Max(0.05, $duration - 2))
     }
 
-    foreach ($seekPoint in $seekPoints) {
-        $seconds = [Math]::Round($seekPoint, 3).ToString([Globalization.CultureInfo]::InvariantCulture)
-        $seekExpression = @"
+    if ($script:SegmentUrls.Count -eq 0) {
+        foreach ($seekPoint in $seekPoints) {
+            $seconds = [Math]::Round($seekPoint, 3).ToString([Globalization.CultureInfo]::InvariantCulture)
+            $seekExpression = @"
 (() => {
   const host = document.querySelector('hls-video');
   const video = host?.shadowRoot?.querySelector('video');
@@ -370,9 +401,10 @@ try {
   return true;
 })()
 "@
-        [void](Invoke-CdpExpression -Socket $socket -Expression $seekExpression)
-        Wait-And-DrainNetwork -Socket $socket -Seconds $SeekWaitSeconds
-        Write-Host ("  captured {0} segment URLs" -f $script:SegmentUrls.Count)
+            [void](Invoke-CdpExpression -Socket $socket -Expression $seekExpression)
+            Wait-And-DrainNetwork -Socket $socket -Seconds $SeekWaitSeconds
+            Write-Host ("  captured {0} segment URLs" -f $script:SegmentUrls.Count)
+        }
     }
 
     # Pause the player after capture.
